@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Sensitive config and credentials
+.env
+.polymarket-creds.json
+.tg-config.json
+monitor/.tg-config.json
+monitor/.balance-history.json
+monitor/accounts.json
+
+# Runtime data
+.strategy-config.json
+.strategy-sources.json
+.manual-config.json
+.backtest-state.json
+.active-market.json
+.trade-history.json
+.port
+
+# Backtest data (collected at runtime, not committed)
+backtest-data/*.jsonl
+backtest-data/collector/**/*.jsonl
+
+# System files
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI assistant / dev-tool files (not for the public repo)
+CLAUDE.md
+docs/AGENTS.md
+.mcp.json
+.claude/
+.cursor/
+
+# Logs
+*.log
+npm-debug.log*
+release/*.log
+
+# Release packaging (build artifacts, not committed)
+*.zip
+release/*.zip

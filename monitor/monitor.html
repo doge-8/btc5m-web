@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Multi-Account Monitor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    padding: 16px;
+    min-height: 100vh;
+  }
+
+  /* Top summary bar */
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 16px; padding: 12px 16px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 8px;
+  }
+  header h1 { font-size: 14px; font-weight: 600; color: #f0a500; }
+  .summary { display: flex; gap: 18px; font-size: 12px; }
+  .summary span b { color: #f0a500; margin-left: 4px; font-weight: 600; }
+  .summary .pos b { color: #3fb950; }
+  .summary .neg b { color: #f85149; }
+  .summary .gray b { color: #8b96a8; }
+
+  /* Card wall */
+  #cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: border-color 0.15s, transform 0.15s;
+    cursor: default;
+    position: relative;
+  }
+  .card:hover { transform: translateY(-1px); }
+  .card.health-ok    { border-left: 3px solid #3fb950; }
+  .card.health-warn  { border-left: 3px solid #f0a500; }
+  .card.health-error { border-left: 3px solid #f85149; }
+  .card.health-dead  { border-left: 3px solid #555; opacity: 0.6; }
+  .card.stale        { opacity: 0.75; }
+  .stale-tag {
+    position: absolute; top: 6px; right: 6px;
+    padding: 1px 5px; font-size: 9px; color: #f0a500;
+    background: rgba(240,165,0,0.12); border-radius: 3px;
+    pointer-events: none;
+  }
+  .market-tag {
+    display: inline-block; margin-left: 6px; padding: 1px 6px;
+    font-size: 10px; color: #58a6ff;
+    background: rgba(88,166,255,0.08);
+    border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  /* Card header: account name + port + open button */
+  .card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px;
+    margin-bottom: 8px; padding-bottom: 8px;
+    border-bottom: 1px dashed rgba(148,163,184,0.12);
+  }
+  .card-head > div:first-child {
+    display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  }
+  .card-head-row1 { display: flex; align-items: center; min-width: 0; }
+  /* row2 uses negative margin so the padded tag's left edge aligns with row1's text left edge */
+  .card-head-row2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: -6px; }
+  .card-name {
+    font-size: 13px; font-weight: 600; color: #e6edf3;
+    white-space: nowrap;
+  }
+  .card-port { color: #6a737d; font-size: 10px; margin-left: 6px; }
+  .card-machine {
+    color: #8b96a8; font-size: 10px;
+    padding: 1px 6px; border-radius: 3px;
+    background: rgba(148,163,184,0.08);
+    border: 1px solid rgba(148,163,184,0.15);
+  }
+  .card-open {
+    padding: 3px 10px; font-size: 10px;
+    background: rgba(244,183,64,0.1);
+    border: 1px solid rgba(244,183,64,0.3);
+    color: #d29922;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+  .card-open:hover { background: rgba(244,183,64,0.2); }
+
+  /* Main info row (4-column grid) */
+  .card-main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    font-size: 11px;
+  }
+  .card-main .lbl { color: #6a737d; font-size: 9px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .card-main .val { color: #e6edf3; font-size: 13px; font-weight: 600; margin-top: 1px; }
+  .card-main .val.pos { color: #3fb950; }
+  .card-main .val.neg { color: #f85149; }
+  .card-main .val.gray { color: #555; }
+  .card-main .val.warn { color: #f0a500; }
+
+  /* Secondary info row */
+  .card-sub {
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed rgba(148,163,184,0.12);
+    display: flex; justify-content: space-between;
+    font-size: 10px;
+    color: #8b96a8;
+  }
+  .card-sub .strat { color: #58a6ff; font-weight: 600; }
+  .card-sub .ws-ok { color: #3fb950; }
+  .card-sub .ws-bad { color: #f85149; }
+  .card-sub .mkt-paused { color: #f85149; font-weight: 600; }
+  .card-sub .mkt-open { color: #8b96a8; }
+  .card-sub.mkt-row { border-top: none; padding-top: 2px; margin-top: 2px; min-height: 14px; }
+
+  /* Error card: unreachable */
+  .card-err {
+    color: #f85149;
+    font-size: 11px;
+    text-align: center;
+    padding: 16px 0;
+  }
+
+  /* Loading */
+  #loading {
+    text-align: center; padding: 40px;
+    color: #6a737d; font-size: 12px;
+  }
+
+  /* Manage accounts button (in the summary bar) */
+  .manage-toggle {
+    background: none; border: 1px solid rgba(148,163,184,0.2);
+    color: #8b96a8; padding: 4px 10px; border-radius: 4px;
+    cursor: pointer; font-size: 11px; margin-left: 8px;
+  }
+  .manage-toggle:hover { color: #d29922; border-color: rgba(244,183,64,0.3); }
+  .manage-toggle.on { color: #f0b840; border-color: rgba(244,183,64,0.6); background: rgba(244,183,64,0.08); }
+
+  /* Modal */
+  .modal-mask {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 100;
+    align-items: flex-start; justify-content: center;
+    padding: 60px 20px;
+  }
+  .modal-mask.open { display: flex; }
+  .modal {
+    background: #161b22;
+    border: 1px solid rgba(148,163,184,0.15);
+    border-radius: 10px;
+    width: 100%; max-width: 720px;
+    max-height: calc(100vh - 120px);
+    display: flex; flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .modal-head {
+    padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(148,163,184,0.1);
+  }
+  .modal-head h2 { font-size: 14px; font-weight: 600; color: #e6edf3; }
+  .modal-head .hint { color: #6a737d; font-size: 10px; margin-left: 10px; font-weight: 400; }
+  .modal-close {
+    background: none; border: none; color: #8b96a8;
+    font-size: 18px; cursor: pointer; line-height: 1; padding: 4px 8px;
+  }
+  .modal-close:hover { color: #f85149; }
+  .modal-body { padding: 12px 18px; overflow-y: auto; flex: 1; }
+  .modal-foot {
+    padding: 12px 18px; display: flex; gap: 8px; align-items: center;
+    border-top: 1px solid rgba(148,163,184,0.1);
+  }
+
+  /* Management table */
+  .manage-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  .manage-table th {
+    color: #6a737d; text-align: left; padding: 6px 8px;
+    font-weight: 500; font-size: 10px; letter-spacing: 0.04em;
+    text-transform: uppercase; border-bottom: 1px solid rgba(148,163,184,0.1);
+  }
+  .manage-row { border-bottom: 1px solid rgba(148,163,184,0.05); }
+  .manage-row:hover { background: rgba(255,255,255,0.02); }
+  .manage-row.dragging { opacity: 0.4; }
+  .manage-row.drag-over { background: rgba(244,183,64,0.06); }
+  .manage-row.disabled-row td:not(:first-child):not(:nth-child(2)) { opacity: 0.45; }
+  .manage-table td { padding: 6px 8px; vertical-align: middle; }
+
+  .drag-handle {
+    color: #555; cursor: grab; user-select: none;
+    font-size: 14px; padding: 0 2px;
+  }
+  .drag-handle:active { cursor: grabbing; }
+
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; margin-right: 6px; vertical-align: middle;
+  }
+  .status-dot.ok { background: #3fb950; box-shadow: 0 0 6px rgba(63,185,80,0.5); }
+  .status-dot.bad { background: #f85149; }
+  .status-dot.unknown { background: #555; }
+  .status-text { font-size: 10px; color: #8b96a8; vertical-align: middle; }
+
+  .manage-table input {
+    background: rgba(0,0,0,0.3); border: 1px solid rgba(148,163,184,0.15);
+    color: #e6edf3; padding: 6px 10px; border-radius: 4px; font-size: 12px;
+    width: 100%; box-sizing: border-box; transition: border-color 0.15s;
+  }
+  .manage-table input:focus { outline: none; border-color: rgba(244,183,64,0.5); }
+  .manage-table input.invalid { border-color: rgba(248,81,73,0.5); }
+
+  .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+  .icon-btn {
+    background: none; border: 1px solid rgba(148,163,184,0.2);
+    color: #8b96a8; padding: 4px 8px; border-radius: 3px;
+    cursor: pointer; font-size: 10px;
+  }
+  .icon-btn:hover { color: #d29922; border-color: rgba(244,183,64,0.3); }
+  .icon-btn.testing { color: #d29922; border-color: rgba(244,183,64,0.3); }
+  .icon-btn.danger { color: #f85149; border-color: rgba(248,81,73,0.3); }
+  .icon-btn.danger:hover { background: rgba(248,81,73,0.1); }
+  .icon-btn.danger.confirm { background: rgba(248,81,73,0.2); color: #ff7b73; }
+
+  .empty-tip {
+    text-align: center; color: #6a737d; font-size: 11px;
+    padding: 30px; font-style: italic;
+  }
+
+  .btn-add {
+    background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.3);
+    color: #3fb950; padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-size: 11px;
+  }
+  .btn-add:hover { background: rgba(63,185,80,0.18); }
+  .btn-save {
+    background: rgba(244,183,64,0.15); border: 1px solid rgba(244,183,64,0.4);
+    color: #d29922; padding: 6px 18px; border-radius: 4px;
+    cursor: pointer; font-size: 11px; font-weight: 600;
+  }
+  .btn-save.dirty { background: rgba(244,183,64,0.3); box-shadow: 0 0 0 2px rgba(244,183,64,0.15); }
+  .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .manage-msg { font-size: 11px; color: #8b96a8; margin-left: auto; }
+  .manage-msg.ok { color: #3fb950; }
+  .manage-msg.err { color: #f85149; }
+  .manage-msg.dirty { color: #d29922; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Polymarket Multi-Account Monitor</h1>
+  <div class="summary">
+    <span class="gray">Machines<b id="sum-total">—</b></span>
+    <span class="gray">Online<b id="sum-online">—</b></span>
+    <span class="gray">Offline<b id="sum-offline">—</b></span>
+    <span class="gray">Total Balance<b id="sum-usdc">—</b></span>
+    <span id="sum-pnl-wrap" class="gray">Today's PnL<b id="sum-pnl">—</b></span>
+    <span class="gray">Total Trades<b id="sum-count">—</b></span>
+    <span class="gray">Total Win Rate<b id="sum-winrate">—</b></span>
+    <span class="gray">Next Refresh<b id="sum-refresh">5s</b></span>
+    <button class="manage-toggle" id="open-all" title="Check the accounts to open, batch-open in new tabs">↗ Open Selected</button>
+    <button class="manage-toggle" id="mask-toggle" title="Replace account names with *** for easy screenshot sharing">👤 Username</button>
+    <button class="manage-toggle" id="balance-toggle" title="Total balance history curve">📈 Balance</button>
+    <button class="manage-toggle" id="tg-toggle" title="Telegram push configuration">📡 TG</button>
+    <button class="manage-toggle" id="manage-toggle" title="Manage accounts (M)">⚙ Manage</button>
+  </div>
+</header>
+
+<div id="loading">Loading account list...</div>
+<div id="cards"></div>
+
+<!-- Manage accounts modal -->
+<div class="modal-mask" id="manage-mask">
+  <div class="modal" role="dialog" aria-labelledby="manage-title">
+    <div class="modal-head">
+      <div>
+        <h2 id="manage-title" style="display:inline">⚙ Manage Accounts</h2>
+        <span class="hint">Drag ⋮⋮ to reorder · Enter to add a row · Esc to close</span>
+      </div>
+      <button class="modal-close" id="manage-cancel" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+      <table class="manage-table">
+        <thead>
+          <tr>
+            <th style="width:24px"></th>
+            <th style="width:48px" title="Checked = monitoring enabled; unchecked = config kept but hidden">Enabled</th>
+            <th style="width:14%">Status</th>
+            <th style="width:32%">Name</th>
+            <th style="width:16%">Port</th>
+            <th style="width:auto"></th>
+          </tr>
+        </thead>
+        <tbody id="manage-tbody"></tbody>
+      </table>
+      <div class="empty-tip" id="manage-empty" style="display:none">
+        No accounts yet, click "+ Add Account" below to start
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-add" id="manage-add">+ Add Account</button>
+      <span class="manage-msg" id="manage-msg"></span>
+      <button class="btn-save" id="manage-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Open Selected modal -->
+<div class="modal-mask" id="open-pick-mask">
+  <div class="modal" role="dialog" style="max-width:480px">
+    <div class="modal-head">
+      <div>
+        <h2 style="display:inline">↗ Open Selected</h2>
+        <span class="hint">Check the accounts to open in new tabs</span>
+      </div>
+      <button class="modal-close" id="open-pick-cancel" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="manage-toggle" id="open-pick-all">Select All</button>
+        <button class="manage-toggle" id="open-pick-none">Clear</button>
+        <span style="margin-left:auto;font-size:11px;color:#8b96a8" id="open-pick-count">Selected 0</span>
+      </div>
+      <div id="open-pick-list" style="max-height:50vh;overflow:auto;border:1px solid rgba(148,163,184,0.1);border-radius:4px;padding:6px 0"></div>
+    </div>
+    <div class="modal-foot">
+      <span style="flex:1"></span>
+      <button class="btn-save" id="open-pick-go">Open</button>
+    </div>
+  </div>
+</div>
+
+<!-- TG config modal -->
+<div class="modal-mask" id="tg-mask">
+  <div class="modal" role="dialog" aria-labelledby="tg-title" style="max-width:560px">
+    <div class="modal-head">
+      <div>
+        <h2 id="tg-title" style="display:inline">📡 Telegram Push</h2>
+        <span class="hint">Type /status in TG to query the monitor overview</span>
+      </div>
+      <button class="modal-close" id="tg-close" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;font-size:12px">
+        <label style="color:#8b96a8">Enabled</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="tg-enabled" style="cursor:pointer">
+          <span style="font-size:11px;color:#6a737d">The bot only responds to commands once checked</span>
+        </label>
+
+        <label style="color:#8b96a8">Bot Token</label>
+        <input type="text" id="tg-token" placeholder="123456:AAH..."
+               style="background:rgba(0,0,0,0.3);border:1px solid rgba(148,163,184,0.15);
+                      color:#e6edf3;padding:6px 10px;border-radius:4px;font-size:12px;font-family:monospace">
+
+        <label style="color:#8b96a8">Chat ID</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="tg-chatid" placeholder="Send the bot a message in TG first, then click Fetch"
+                 style="background:rgba(0,0,0,0.3);border:1px solid rgba(148,163,184,0.15);
+                        color:#e6edf3;padding:6px 10px;border-radius:4px;font-size:12px;flex:1">
+          <button class="icon-btn" id="tg-auto" style="white-space:nowrap">↻ Fetch</button>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;padding:10px 12px;background:rgba(88,166,255,0.05);
+                  border-left:3px solid rgba(88,166,255,0.4);font-size:11px;color:#8b96a8;line-height:1.6">
+        <div style="color:#58a6ff;margin-bottom:4px;font-weight:600">How to use</div>
+        1. Create a bot via <a href="https://t.me/BotFather" target="_blank" style="color:#58a6ff">@BotFather</a> to get a token<br>
+        2. Search for your bot in TG and send any message (required, otherwise chat_id can't be fetched)<br>
+        3. Enter the token → click "↻ Fetch" to auto-get chat_id → check Enabled → Save<br>
+        4. Send /status in TG to view the overview, /d &lt;account name&gt; for a single account
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="icon-btn" id="tg-test">📤 Send Test Message</button>
+      <span class="manage-msg" id="tg-msg"></span>
+      <button class="btn-save" id="tg-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Balance curve modal -->
+<div class="modal-mask" id="balance-mask">
+  <div class="modal" role="dialog" style="max-width:760px">
+    <div class="modal-head">
+      <div>
+        <h2 style="display:inline">📈 Total Balance History</h2>
+        <span class="hint">Auto-recorded daily at CST 00:05</span>
+      </div>
+      <button class="modal-close" id="balance-close" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="balance-summary" style="display:flex;gap:18px;font-size:11px;color:#8b96a8;margin-bottom:10px;flex-wrap:wrap">
+        <span>Days Recorded <b id="bh-days" style="color:#f0a500">—</b></span>
+        <span>Latest <b id="bh-latest" style="color:#f0a500">—</b></span>
+        <span>Change <b id="bh-change" style="color:#3fb950">—</b></span>
+        <span>Max <b id="bh-max" style="color:#3fb950">—</b></span>
+        <span>Min <b id="bh-min" style="color:#f85149">—</b></span>
+      </div>
+      <svg id="balance-chart" width="100%" height="320"
+           style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.1);border-radius:6px"></svg>
+      <div id="balance-empty" style="display:none;text-align:center;color:#6a737d;font-size:12px;padding:40px">
+        No history yet — wait for tomorrow's auto-record at CST 00:05, or click "Record Once Now" below
+      </div>
+      <div id="balance-table-wrap" style="margin-top:10px;max-height:140px;overflow-y:auto">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead>
+            <tr style="color:#6a737d;text-align:left;border-bottom:1px solid rgba(148,163,184,0.1)">
+              <th style="padding:4px 8px;font-weight:500">Date</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:right">Total Balance</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:right">Change</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:right">Online / Offline</th>
+              <th style="padding:4px 8px;font-weight:500;text-align:right;width:60px"></th>
+            </tr>
+          </thead>
+          <tbody id="balance-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="icon-btn" id="balance-snapshot-now" title="Take a snapshot now (overwrites today's data)">📸 Record Once Now</button>
+      <span class="manage-msg" id="balance-msg" style="margin-left:auto"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const REFRESH_MS = 5000;
+
+let accounts = [];
+let lastStates = {};   // port → state (caches the last successful one)
+let lastStateAt = {};  // port → last success timestamp
+let failCount = {};    // port → consecutive failure count
+let countdownTimer = null;
+const FAIL_TOLERATE = 12;        // Mark offline only after ≥ this many consecutive failures (5s/each × 12 ≈ 60s buffer)
+const STALE_CACHE_MAX_MS = 60_000; // Cache validity: stale data within 60 seconds is still shown (marked stale)
+
+// —— Username masking (for screenshot sharing) ——
+let maskNames = localStorage.getItem("monitor.maskNames") === "1";
+function maskName(s) {
+  return maskNames ? "***" : s;
+}
+// Mid-ellipsis: when longer than maxLen, keep the first N chars + … + last N chars (only kicks in at extreme lengths)
+function midEllipsis(s, maxLen = 20) {
+  if (!s || s.length <= maxLen) return s;
+  const keep = Math.floor((maxLen - 1) / 2);
+  return s.slice(0, keep) + "…" + s.slice(-keep);
+}
+
+// Health check: returns "ok" | "warn" | "error" | "dead"
+function judgeHealth(state) {
+  if (!state) return "dead";
+  // 401 auth failure → error
+  if (state.usdc == null && state.usdcAllowanceStatus === "NotApproved") return "error";
+  // Not all WS connected → warn
+  const ws = state.wsStatus || {};
+  const wsAllOk = ws.user && ws.market && ws.chainlink && ws.binance;
+  if (!wsAllOk) return "warn";
+  return "ok";
+}
+
+function fmtHours(totalMin) {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h${m}m`;
+}
+
+function fmtTime(ts) {
+  if (!ts) return "—";
+  const diff = Date.now() - ts;
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
+}
+
+function fmtUsdc(v) {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return "$" + v.toFixed(2);
+}
+
+function fmtSize(v) {
+  if (!v || v < 0.01) return "0";
+  return v.toFixed(2);
+}
+
+// Get today's PnL + win rate + 24h fill count (derived from state.pmPnl)
+function extractPnlMetrics(state) {
+  const pnl = state.pmPnl;
+  if (!pnl) return { todayPnl: null, winRate: null, todayCount: null, todayClosedCount: null, todayWins: null };
+  return {
+    todayPnl: typeof pnl.todayPnl === "number" ? pnl.todayPnl : null,
+    winRate: typeof pnl.todayWinRate === "number" ? pnl.todayWinRate : null,
+    todayCount: typeof pnl.todayCount === "number" ? pnl.todayCount : null,
+    todayClosedCount: typeof pnl.todayClosedCount === "number" ? pnl.todayClosedCount : null,
+    todayWins: typeof pnl.todayWins === "number" ? pnl.todayWins : null,
+  };
+}
+
+function renderCard(account, state, error, stale, staleAgeMs) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  // Error state
+  if (error) {
+    card.classList.add("health-dead");
+    const head = document.createElement("div");
+    head.className = "card-head";
+    const left = document.createElement("div");
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "card-name";
+    nameSpan.textContent = maskName(account.name);
+    const portSpan = document.createElement("span");
+    portSpan.className = "card-port";
+    portSpan.textContent = ":" + account.port;
+    left.append(nameSpan, portSpan);
+    const link = document.createElement("a");
+    link.className = "card-open";
+    link.href = "http://localhost:" + account.port;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "Open ↗";
+    head.append(left, link);
+    const errDiv = document.createElement("div");
+    errDiv.className = "card-err";
+    errDiv.textContent = "⚠ " + error;
+    card.append(head, errDiv);
+    return card;
+  }
+
+  if (stale) card.classList.add("stale");
+  const health = judgeHealth(state);
+  card.classList.add("health-" + health);
+
+  // Extract data
+  const usdc = state.usdc;
+  const upPos = state.upLocalSize || 0;
+  const dnPos = state.downLocalSize || 0;
+  const lastTrade = state.lastTradeAt;
+  const ws = state.wsStatus || {};
+  const wsAllOk = ws.user && ws.market && ws.chainlink && ws.binance;
+  const accName = state.accountName || account.name;
+  const { todayPnl, winRate, todayCount, todayClosedCount, todayWins } = extractPnlMetrics(state);
+
+  // Strategy status text: enabled strategies + shares/amount; if none enabled show "No strategy enabled"
+  const cfg = state.strategyConfig || {};
+  const fmtStratSize = key => {
+    const lk = String(key).toLowerCase();
+    const isLimit = lk.startsWith("l");
+    if (isLimit) {
+      const sh = cfg.shares?.[lk];
+      return sh != null ? `${sh} shares` : null;
+    }
+    const am = cfg.amount?.[lk];
+    return am != null ? `$${am}` : null;
+  };
+  const enabledKeys = Object.keys(cfg.enabled || {}).filter(k => cfg.enabled[k]);
+  let stratLabel;
+  if (!enabledKeys.length) {
+    stratLabel = "No strategy enabled";
+  } else {
+    stratLabel = enabledKeys.map(k => {
+      const sz = fmtStratSize(k);
+      return sz ? `${k.toUpperCase()}(${sz})` : k.toUpperCase();
+    }).join(" ");
+  }
+
+  // —— Card header —— two-row structure: account name+port / machine name+market tag
+  const head = document.createElement("div");
+  head.className = "card-head";
+  const headLeft = document.createElement("div");
+  // Row one: account name + port
+  const row1 = document.createElement("div");
+  row1.className = "card-head-row1";
+  const nameEl = document.createElement("span");
+  nameEl.className = "card-name";
+  nameEl.textContent = maskName(midEllipsis(accName));
+  nameEl.title = accName;
+  const portEl = document.createElement("span");
+  portEl.className = "card-port";
+  portEl.textContent = ":" + account.port;
+  row1.append(nameEl, portEl);
+  // Row two: machine name + market
+  const row2 = document.createElement("div");
+  row2.className = "card-head-row2";
+  if (account.name) {
+    const machineEl = document.createElement("span");
+    machineEl.className = "card-machine";
+    machineEl.textContent = account.name;
+    row2.append(machineEl);
+  }
+  const marketName = state.activeMarket?.displayName;
+  if (typeof marketName === "string" && marketName) {
+    const mt = document.createElement("span");
+    mt.className = "market-tag";
+    mt.textContent = marketName;
+    row2.append(mt);
+  }
+  headLeft.append(row1);
+  if (row2.children.length > 0) headLeft.append(row2);
+  if (stale) {
+    const tag = document.createElement("span");
+    tag.className = "stale-tag";
+    const ageSec = Math.max(1, Math.round((staleAgeMs || 0) / 1000));
+    tag.textContent = ageSec >= 60 ? `${Math.round(ageSec / 60)}m ago` : `${ageSec}s ago`;
+    card.append(tag);  // Floats at the card's top-right (absolute), doesn't crowd header elements
+  }
+  const linkEl = document.createElement("a");
+  linkEl.className = "card-open";
+  linkEl.href = "http://localhost:" + account.port;
+  linkEl.target = "_blank";
+  linkEl.rel = "noopener";
+  linkEl.textContent = "Open ↗";
+  head.append(headLeft, linkEl);
+
+  // —— Main info, 4 cells (using a helper) ——
+  function makeCell(label, valText, valClass, extraEl) {
+    const cell = document.createElement("div");
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    lbl.textContent = label;
+    const val = document.createElement("div");
+    val.className = "val" + (valClass ? " " + valClass : "");
+    val.textContent = valText;
+    if (extraEl) val.append(extraEl);
+    cell.append(lbl, val);
+    return cell;
+  }
+
+  const main = document.createElement("div");
+  main.className = "card-main";
+
+  main.append(makeCell(
+    "USDC",
+    fmtUsdc(usdc),
+    usdc != null && usdc > 0 ? "" : "gray"
+  ));
+
+  main.append(makeCell(
+    "Today's PnL",
+    todayPnl == null ? "—" : (todayPnl >= 0 ? "+" : "") + "$" + todayPnl.toFixed(2),
+    todayPnl == null ? "gray" : todayPnl >= 0 ? "pos" : "neg"
+  ));
+
+  // Position built separately (two colors)
+  const posCell = document.createElement("div");
+  const posLbl = document.createElement("div");
+  posLbl.className = "lbl";
+  posLbl.textContent = "Position Up/Down";
+  const posWrap = document.createElement("div");
+  if (upPos > 0.01 || dnPos > 0.01) {
+    const upEl = document.createElement("span");
+    upEl.className = "val pos";
+    upEl.textContent = fmtSize(upPos);
+    const slash = document.createElement("span");
+    slash.className = "lbl";
+    slash.textContent = " / ";
+    const dnEl = document.createElement("span");
+    dnEl.className = "val neg";
+    dnEl.textContent = fmtSize(dnPos);
+    posWrap.append(upEl, slash, dnEl);
+  } else {
+    const noEl = document.createElement("span");
+    noEl.className = "val gray";
+    noEl.textContent = "No position";
+    posWrap.append(noEl);
+  }
+  posCell.append(posLbl, posWrap);
+  main.append(posCell);
+
+  // Win rate (with wins/closed shown in small text)
+  const cntSpan = document.createElement("span");
+  cntSpan.style.cssText = "color:#6a737d;font-size:10px;margin-left:4px;font-weight:400";
+  cntSpan.textContent = (todayWins != null && todayClosedCount != null)
+    ? `(${todayWins}/${todayClosedCount})`
+    : "";
+  main.append(makeCell(
+    "Today's Win Rate",
+    winRate == null ? "—" : (winRate * 100).toFixed(0) + "%",
+    winRate == null ? "gray" : winRate >= 0.5 ? "pos" : "neg",
+    cntSpan
+  ));
+
+  // —— Secondary info ——
+  const sub = document.createElement("div");
+  sub.className = "card-sub";
+  const stratSpan = document.createElement("span");
+  stratSpan.className = "strat";
+  stratSpan.textContent = stratLabel;
+  const tradeSpan = document.createElement("span");
+  tradeSpan.textContent = "Last fill " + fmtTime(lastTrade);
+  const wsSpan = document.createElement("span");
+  wsSpan.className = wsAllOk ? "ws-ok" : "ws-bad";
+  wsSpan.textContent = wsAllOk ? "● WS" : "○ WS";
+  sub.append(stratSpan, tradeSpan, wsSpan);
+  card.append(head, main, sub);
+
+  // —— Weekend pause status (fixed placeholder to avoid card height jumps; leaves blank but keeps height when off) ——
+  const sub2 = document.createElement("div");
+  sub2.className = "card-sub mkt-row";
+  const lbl = document.createElement("span");
+  const val = document.createElement("span");
+  if (state.strategyConfig?.weekendPause && state.marketStatus) {
+    const ms = state.marketStatus;
+    const remainMin = Math.ceil((Number(ms.secondsUntilNext) || 0) / 60);
+    lbl.textContent = "AntiManip";
+    if (ms.paused) {
+      val.className = "mkt-paused";
+      val.textContent = `🛑 Paused · ${fmtHours(remainMin)} left`;
+    } else {
+      val.className = "mkt-open";
+      val.textContent = `Weekday · pause in ${fmtHours(remainMin)}`;
+    }
+  } else {
+    lbl.innerHTML = "&nbsp;";
+    val.innerHTML = "&nbsp;";
+  }
+  sub2.append(lbl, val);
+  card.append(sub2);
+
+  return card;
+}
+
+async function fetchOne(account) {
+  try {
+    const r = await fetch(`/api/proxy?port=${account.port}`);
+    if (!r.ok) {
+      const errBody = await r.json().catch(() => ({}));
+      throw new Error(errBody.detail || `HTTP ${r.status}`);
+    }
+    const state = await r.json();
+    // The server may return cached data (account is locally slow/timed out) —— determine via header
+    const serverStale = r.headers.get("X-State-Stale") === "1";
+    const serverAge = parseInt(r.headers.get("X-State-Age-Ms") || "0", 10) || 0;
+    if (serverStale) {
+      // The server returned cache: don't refresh the local cache timestamp, keep the earliest fresh time
+      failCount[account.port] = (failCount[account.port] || 0) + 1;
+      const localCached = lastStates[account.port];
+      const localAge = Date.now() - (lastStateAt[account.port] || 0);
+      // Prefer fresh local data; if none, use the cache the server pushed (age = serverAge)
+      if (localCached && localAge < STALE_CACHE_MAX_MS) {
+        return { account, state: localCached, error: null, stale: true, staleAgeMs: localAge };
+      }
+      return { account, state, error: null, stale: true, staleAgeMs: serverAge };
+    }
+    lastStates[account.port] = state;
+    lastStateAt[account.port] = Date.now();
+    failCount[account.port] = 0;
+    return { account, state, error: null, stale: false };
+  } catch (e) {
+    failCount[account.port] = (failCount[account.port] || 0) + 1;
+    // Single failure: if a recent cache exists (<60s), render from cache and mark stale to avoid frequent card flicker
+    const cached = lastStates[account.port];
+    const cachedAge = Date.now() - (lastStateAt[account.port] || 0);
+    if (failCount[account.port] < FAIL_TOLERATE && cached && cachedAge < STALE_CACHE_MAX_MS) {
+      return { account, state: cached, error: null, stale: true, staleAgeMs: cachedAge };
+    }
+    return { account, state: null, error: e.message || "Unreachable", stale: false };
+  }
+}
+
+let refreshTimer = null;
+async function refresh() {
+  const results = await Promise.all(accounts.map(fetchOne));
+  renderAll(results);
+  // After refresh completes, align the countdown + schedule the next one (avoids drift)
+  resetCountdown();
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(refresh, REFRESH_MS);
+}
+
+function renderAll(results) {
+  window._lastResults = results;  // Cache for instant re-render when toggling "username masking"
+  const cards = document.getElementById("cards");
+  const loading = document.getElementById("loading");
+  loading.style.display = "none";
+  cards.innerHTML = "";
+
+  let online = 0, offline = 0, totalUsdc = 0, totalPnl = 0;
+  let totalCount = 0, totalClosed = 0, totalWins = 0;
+  for (const r of results) {
+    cards.appendChild(renderCard(r.account, r.state, r.error, r.stale, r.staleAgeMs));
+    if (r.state) {
+      online++;
+      if (typeof r.state.usdc === "number") totalUsdc += r.state.usdc;
+      const m = extractPnlMetrics(r.state);
+      if (m.todayPnl != null) totalPnl += m.todayPnl;
+      if (m.todayCount != null) totalCount += m.todayCount;
+      if (m.todayClosedCount != null) totalClosed += m.todayClosedCount;
+      if (m.todayWins != null) totalWins += m.todayWins;
+    } else {
+      offline++;
+    }
+  }
+
+  document.getElementById("sum-total").textContent = results.length;
+  document.getElementById("sum-online").textContent = online;
+  document.getElementById("sum-offline").textContent = offline;
+  document.getElementById("sum-usdc").textContent = "$" + totalUsdc.toFixed(2);
+  const pnlEl = document.getElementById("sum-pnl");
+  pnlEl.textContent = (totalPnl >= 0 ? "+" : "") + "$" + totalPnl.toFixed(2);
+  const wrap = document.getElementById("sum-pnl-wrap");
+  wrap.className = totalPnl >= 0 ? "pos" : "neg";
+  document.getElementById("sum-count").textContent = totalCount;
+  const winRateEl = document.getElementById("sum-winrate");
+  if (totalClosed > 0) {
+    winRateEl.textContent = ((totalWins / totalClosed) * 100).toFixed(0) + "% (" + totalWins + "/" + totalClosed + ")";
+  } else {
+    winRateEl.textContent = "—";
+  }
+}
+
+let countdownLeft = REFRESH_MS / 1000;
+function resetCountdown() {
+  countdownLeft = REFRESH_MS / 1000;
+  document.getElementById("sum-refresh").textContent = countdownLeft + "s";
+}
+function startCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  resetCountdown();
+  countdownTimer = setInterval(() => {
+    countdownLeft -= 1;
+    document.getElementById("sum-refresh").textContent = (countdownLeft > 0 ? countdownLeft : 0) + "s";
+  }, 1000);
+}
+
+// ── Management panel ──
+let draftAccounts = [];   // The copy being edited
+let serverSnapshot = "";  // Snapshot after the last save (for dirty detection)
+let dragSrcIdx = null;
+let pendingDelIdx = null; // Row awaiting second-confirm deletion
+
+function snapshot(arr) {
+  return JSON.stringify(arr.map(a => ({ name: a.name || "", port: +a.port || 0, enabled: a.enabled !== false })));
+}
+function isDirty() {
+  return snapshot(draftAccounts) !== serverSnapshot;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function rowStatus(port) {
+  // Get the status from the current refresh result
+  const ts = lastStateAt[port];
+  if (ts && Date.now() - ts < 30_000) return { kind: "ok", text: "Online" };
+  if (failCount[port] >= 1) return { kind: "bad", text: "Offline" };
+  return { kind: "unknown", text: "Unknown" };
+}
+
+function renderManageRows() {
+  const tbody = document.getElementById("manage-tbody");
+  const empty = document.getElementById("manage-empty");
+  tbody.innerHTML = "";
+
+  if (draftAccounts.length === 0) {
+    empty.style.display = "block";
+  } else {
+    empty.style.display = "none";
+    // Duplicate port detection
+    const portCount = {};
+    draftAccounts.forEach(a => {
+      const p = +a.port || 0;
+      if (p > 0) portCount[p] = (portCount[p] || 0) + 1;
+    });
+
+    draftAccounts.forEach((a, idx) => {
+      const st = rowStatus(a.port);
+      const portDup = (+a.port > 0) && portCount[+a.port] > 1;
+      const portInvalid = !a.port || a.port < 1 || a.port > 65535;
+      const nameInvalid = !(a.name || "").trim();
+      const isDelConfirm = pendingDelIdx === idx;
+
+      const tr = document.createElement("tr");
+      tr.className = "manage-row";
+      tr.dataset.idx = idx;
+      const enabled = a.enabled !== false;
+      if (!enabled) tr.classList.add("disabled-row");
+      tr.innerHTML = `
+        <td><span class="drag-handle" draggable="true" title="Drag here to reorder">⋮⋮</span></td>
+        <td style="text-align:center">
+          <input type="checkbox" data-idx="${idx}" data-field="enabled" ${enabled ? "checked" : ""}
+                 title="Enable monitoring (unchecking keeps the config but hides it)">
+        </td>
+        <td>
+          <span class="status-dot ${st.kind}"></span>
+          <span class="status-text">${st.text}</span>
+        </td>
+        <td>
+          <input type="text" value="${escapeHtml(a.name)}" data-idx="${idx}" data-field="name"
+                 placeholder="Account name" class="${nameInvalid ? "invalid" : ""}">
+        </td>
+        <td>
+          <input type="number" value="${a.port || ""}" data-idx="${idx}" data-field="port"
+                 placeholder="Port" min="1" max="65535"
+                 class="${(portInvalid || portDup) ? "invalid" : ""}"
+                 title="${portDup ? "Duplicate port" : ""}">
+        </td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn" data-act="open" data-idx="${idx}" title="Open in new window" ${portInvalid ? "disabled" : ""}>↗ Open</button>
+            <button class="icon-btn ${isDelConfirm ? "danger confirm" : "danger"}" data-act="del" data-idx="${idx}">
+              ${isDelConfirm ? "Confirm?" : "Delete"}
+            </button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Input bindings (no re-render, only update the red border on this/duplicate rows to avoid losing focus)
+  tbody.querySelectorAll("input").forEach(inp => {
+    if (inp.type === "checkbox" && inp.dataset.field === "enabled") {
+      inp.addEventListener("change", () => {
+        const idx = +inp.dataset.idx;
+        draftAccounts[idx].enabled = inp.checked;
+        inp.closest("tr").classList.toggle("disabled-row", !inp.checked);
+        pendingDelIdx = null;
+        updateDirtyState();
+      });
+      return;
+    }
+    inp.addEventListener("input", () => {
+      const idx = +inp.dataset.idx;
+      const field = inp.dataset.field;
+      if (field === "port") draftAccounts[idx].port = +inp.value || 0;
+      else draftAccounts[idx].name = inp.value;
+      pendingDelIdx = null;
+      updateDirtyState();
+      if (field === "port") refreshPortValidity();
+      else refreshNameValidity(idx);
+    });
+  });
+
+  // Action buttons
+  tbody.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = +btn.dataset.idx;
+      const act = btn.dataset.act;
+      if (act === "open") {
+        const port = draftAccounts[idx].port;
+        if (port) window.open(`http://localhost:${port}`, "_blank");
+      } else if (act === "del") {
+        if (pendingDelIdx === idx) {
+          draftAccounts.splice(idx, 1);
+          pendingDelIdx = null;
+          renderManageRows();
+          updateDirtyState();
+        } else {
+          pendingDelIdx = idx;
+          renderManageRows();
+          // Auto-cancel after 5s
+          setTimeout(() => {
+            if (pendingDelIdx === idx) { pendingDelIdx = null; renderManageRows(); }
+          }, 5000);
+        }
+      }
+    });
+  });
+
+  // Drag to reorder: only the ⋮⋮ handle can initiate a drag
+  tbody.querySelectorAll(".drag-handle").forEach(handle => {
+    const row = handle.closest(".manage-row");
+    handle.addEventListener("dragstart", e => {
+      dragSrcIdx = +row.dataset.idx;
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(dragSrcIdx));
+    });
+    handle.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      tbody.querySelectorAll(".drag-over").forEach(r => r.classList.remove("drag-over"));
+      dragSrcIdx = null;
+    });
+  });
+  // The whole row accepts the drop target (so after dragging out from the handle, the entire row can receive the drop)
+  tbody.querySelectorAll(".manage-row").forEach(row => {
+    row.addEventListener("dragover", e => {
+      if (dragSrcIdx == null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      tbody.querySelectorAll(".drag-over").forEach(r => r.classList.remove("drag-over"));
+      row.classList.add("drag-over");
+    });
+    row.addEventListener("drop", e => {
+      if (dragSrcIdx == null) return;
+      e.preventDefault();
+      const tgt = +row.dataset.idx;
+      if (dragSrcIdx === tgt) return;
+      const [moved] = draftAccounts.splice(dragSrcIdx, 1);
+      draftAccounts.splice(tgt, 0, moved);
+      dragSrcIdx = null;
+      renderManageRows();
+      updateDirtyState();
+    });
+  });
+}
+
+function refreshPortValidity() {
+  // Recompute duplicate + out-of-range ports, update the invalid class on all port inputs
+  const tbody = document.getElementById("manage-tbody");
+  const portCount = {};
+  draftAccounts.forEach(a => {
+    const p = +a.port || 0;
+    if (p > 0) portCount[p] = (portCount[p] || 0) + 1;
+  });
+  tbody.querySelectorAll("input[data-field='port']").forEach(inp => {
+    const idx = +inp.dataset.idx;
+    const port = +draftAccounts[idx].port || 0;
+    const dup = port > 0 && portCount[port] > 1;
+    const invalid = !port || port < 1 || port > 65535;
+    inp.classList.toggle("invalid", dup || invalid);
+    inp.title = dup ? "Duplicate port" : "";
+    // Sync the open button's disabled state
+    const openBtn = inp.closest("tr").querySelector("button[data-act='open']");
+    if (openBtn) openBtn.disabled = invalid;
+  });
+}
+
+function refreshNameValidity(idx) {
+  const inp = document.querySelector(`#manage-tbody input[data-field='name'][data-idx='${idx}']`);
+  if (!inp) return;
+  const invalid = !(draftAccounts[idx].name || "").trim();
+  inp.classList.toggle("invalid", invalid);
+}
+
+function updateDirtyState() {
+  const dirty = isDirty();
+  const saveBtn = document.getElementById("manage-save");
+  saveBtn.classList.toggle("dirty", dirty);
+  const msg = document.getElementById("manage-msg");
+  if (dirty && !msg.classList.contains("err")) {
+    msg.textContent = "Unsaved changes";
+    msg.className = "manage-msg dirty";
+  } else if (!dirty && msg.classList.contains("dirty")) {
+    msg.textContent = "";
+    msg.className = "manage-msg";
+  }
+}
+
+function setManageMsg(text, kind) {
+  const el = document.getElementById("manage-msg");
+  el.textContent = text;
+  el.className = "manage-msg" + (kind ? " " + kind : "");
+  if (kind === "ok") setTimeout(() => {
+    if (el.classList.contains("ok")) {
+      el.textContent = ""; el.className = "manage-msg";
+      updateDirtyState();
+    }
+  }, 2500);
+}
+
+async function openManage() {
+  // Fetch everything from the server (including disabled items); the management panel needs to see all config
+  try {
+    const r = await fetch("/api/accounts?all=1");
+    const data = await r.json();
+    draftAccounts = Array.isArray(data) ? data.map(a => ({ ...a, enabled: a.enabled !== false })) : accounts.map(a => ({ ...a, enabled: true }));
+  } catch {
+    draftAccounts = accounts.map(a => ({ ...a, enabled: true }));
+  }
+  serverSnapshot = snapshot(draftAccounts);
+  pendingDelIdx = null;
+  document.getElementById("manage-mask").classList.add("open");
+  renderManageRows();
+  setManageMsg("");
+  // Auto-focus the first input
+  setTimeout(() => {
+    const first = document.querySelector("#manage-tbody input[type='text']");
+    if (first) first.focus();
+  }, 50);
+}
+
+function closeManage(force) {
+  if (!force && isDirty()) {
+    if (!confirm("You have unsaved changes. Close anyway?")) return;
+  }
+  document.getElementById("manage-mask").classList.remove("open");
+  pendingDelIdx = null;
+}
+
+function addAccountRow() {
+  draftAccounts.push({ name: "", port: 0, enabled: true });
+  renderManageRows();
+  updateDirtyState();
+  // Move focus to the new row's name input
+  setTimeout(() => {
+    const inputs = document.querySelectorAll("#manage-tbody input[data-field='name']");
+    const last = inputs[inputs.length - 1];
+    if (last) last.focus();
+  }, 0);
+}
+
+async function saveAccounts() {
+  // Frontend pre-validation
+  const errs = [];
+  const seen = new Set();
+  draftAccounts.forEach((a, i) => {
+    const name = (a.name || "").trim();
+    const port = +a.port || 0;
+    if (!name) errs.push(`Row ${i + 1}: name cannot be empty`);
+    if (port < 1 || port > 65535) errs.push(`Row ${i + 1}: port out of range`);
+    if (seen.has(port)) errs.push(`Port ${port} is duplicated`);
+    seen.add(port);
+  });
+  if (errs.length) {
+    setManageMsg(errs[0], "err");
+    return;
+  }
+
+  const btn = document.getElementById("manage-save");
+  btn.disabled = true;
+  setManageMsg("Saving…");
+  try {
+    const r = await fetch("/api/accounts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draftAccounts),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || data.error || "Unknown error");
+    // Main refresh only uses enabled items; the management panel draft keeps everything (including disabled)
+    accounts = data.filter(a => a.enabled !== false);
+    draftAccounts = data.map(a => ({ ...a, enabled: a.enabled !== false }));
+    serverSnapshot = snapshot(draftAccounts);
+    // Clear the cache of deleted accounts
+    const ports = new Set(accounts.map(a => a.port));
+    for (const p of Object.keys(lastStates)) {
+      if (!ports.has(+p)) { delete lastStates[p]; delete lastStateAt[p]; delete failCount[p]; }
+    }
+    renderManageRows();
+    setManageMsg("✓ Saved", "ok");
+    refresh();
+  } catch (e) {
+    setManageMsg("Save failed: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Event bindings
+// —— Open Selected panel ——
+// Checkbox state persistence: localStorage key = monitor.openPick.<port>
+function loadOpenPickChecked() {
+  const out = new Set();
+  for (const a of accounts) {
+    if (localStorage.getItem("monitor.openPick." + a.port) === "1") out.add(a.port);
+  }
+  return out;
+}
+function saveOpenPickChecked(set) {
+  for (const a of accounts) {
+    const key = "monitor.openPick." + a.port;
+    if (set.has(a.port)) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  }
+}
+let openPickChecked = new Set();
+
+function updateOpenPickCount() {
+  const c = document.getElementById("open-pick-count");
+  c.textContent = `Selected ${openPickChecked.size}`;
+}
+
+function renderOpenPickList() {
+  const list = document.getElementById("open-pick-list");
+  list.innerHTML = "";
+  if (!accounts.length) {
+    list.innerHTML = `<div style="text-align:center;padding:24px;color:#6a737d">No accounts available to open</div>`;
+    return;
+  }
+  for (const a of accounts) {
+    const row = document.createElement("label");
+    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:12px";
+    row.onmouseenter = () => row.style.background = "rgba(255,255,255,0.03)";
+    row.onmouseleave = () => row.style.background = "";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = openPickChecked.has(a.port);
+    cb.addEventListener("change", () => {
+      if (cb.checked) openPickChecked.add(a.port);
+      else openPickChecked.delete(a.port);
+      updateOpenPickCount();
+    });
+    const name = document.createElement("span");
+    name.textContent = a.name;
+    name.style.cssText = "color:#e6edf3;flex:1";
+    const port = document.createElement("span");
+    port.textContent = ":" + a.port;
+    port.style.cssText = "color:#6a737d;font-size:10px";
+    row.append(cb, name, port);
+    list.append(row);
+  }
+}
+
+function openPickPanel() {
+  openPickChecked = loadOpenPickChecked();
+  renderOpenPickList();
+  updateOpenPickCount();
+  document.getElementById("open-pick-mask").classList.add("open");
+}
+function closeOpenPick() {
+  document.getElementById("open-pick-mask").classList.remove("open");
+}
+
+document.getElementById("open-all").addEventListener("click", openPickPanel);
+document.getElementById("open-pick-cancel").addEventListener("click", closeOpenPick);
+document.getElementById("open-pick-mask").addEventListener("click", e => {
+  if (e.target.id === "open-pick-mask") closeOpenPick();
+});
+document.getElementById("open-pick-all").addEventListener("click", () => {
+  for (const a of accounts) openPickChecked.add(a.port);
+  renderOpenPickList();
+  updateOpenPickCount();
+});
+document.getElementById("open-pick-none").addEventListener("click", () => {
+  openPickChecked.clear();
+  renderOpenPickList();
+  updateOpenPickCount();
+});
+document.getElementById("open-pick-go").addEventListener("click", () => {
+  if (openPickChecked.size === 0) return;
+  saveOpenPickChecked(openPickChecked);
+  let blocked = 0;
+  for (const a of accounts) {
+    if (!openPickChecked.has(a.port)) continue;
+    const w = window.open(`http://localhost:${a.port}`, "_blank", "noopener");
+    if (!w) blocked++;
+  }
+  closeOpenPick();
+  if (blocked > 0) {
+    alert(`${blocked} tab(s) were blocked by the browser.\nClick the popup icon on the right of the address bar, allow popups for this site, then try again.`);
+  }
+});
+
+// Username masking toggle
+const $maskToggle = document.getElementById("mask-toggle");
+function applyMaskUi() {
+  $maskToggle.classList.toggle("on", maskNames);
+  // Re-render the current cards immediately, no need to wait for the next refresh
+  if (typeof renderAll === "function" && Array.isArray(window._lastResults)) renderAll(window._lastResults);
+}
+$maskToggle.addEventListener("click", () => {
+  maskNames = !maskNames;
+  localStorage.setItem("monitor.maskNames", maskNames ? "1" : "0");
+  applyMaskUi();
+});
+applyMaskUi();
+
+document.getElementById("manage-toggle").addEventListener("click", openManage);
+document.getElementById("manage-cancel").addEventListener("click", () => closeManage(false));
+document.getElementById("manage-add").addEventListener("click", addAccountRow);
+document.getElementById("manage-save").addEventListener("click", saveAccounts);
+// Click the mask to close
+document.getElementById("manage-mask").addEventListener("click", e => {
+  if (e.target.id === "manage-mask") closeManage(false);
+});
+// Keyboard shortcuts
+document.addEventListener("keydown", e => {
+  const balanceOpen = document.getElementById("balance-mask").classList.contains("open");
+  if (balanceOpen) {
+    if (e.key === "Escape") { e.preventDefault(); closeBalance(); }
+    return;
+  }
+  const tgOpen = document.getElementById("tg-mask").classList.contains("open");
+  if (tgOpen) {
+    if (e.key === "Escape") { e.preventDefault(); closeTg(); }
+    return;
+  }
+  const pickOpen = document.getElementById("open-pick-mask").classList.contains("open");
+  if (pickOpen) {
+    if (e.key === "Escape") { e.preventDefault(); closeOpenPick(); }
+    return;
+  }
+  const open = document.getElementById("manage-mask").classList.contains("open");
+  if (!open) {
+    if ((e.key === "m" || e.key === "M") && !e.metaKey && !e.ctrlKey && !["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
+      e.preventDefault();
+      openManage();
+    }
+    return;
+  }
+  if (e.key === "Escape") { e.preventDefault(); closeManage(false); }
+  else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveAccounts(); }
+  else if (e.key === "Enter" && e.target.tagName === "INPUT") {
+    // Pressing Enter in the last row's port field → add a row
+    const idx = +e.target.dataset.idx;
+    if (idx === draftAccounts.length - 1 && e.target.dataset.field === "port") {
+      e.preventDefault();
+      addAccountRow();
+    }
+  }
+});
+
+// ── TG config panel ──
+let tgCurrentToken = "";  // The server's token mask (used to detect whether the user modified it)
+
+function setTgMsg(text, kind) {
+  const el = document.getElementById("tg-msg");
+  el.textContent = text || "";
+  el.className = "manage-msg" + (kind ? " " + kind : "");
+  if (kind === "ok") setTimeout(() => {
+    if (el.classList.contains("ok")) { el.textContent = ""; el.className = "manage-msg"; }
+  }, 2500);
+}
+
+async function loadTgConfig() {
+  try {
+    const r = await fetch("/api/tg/config");
+    const cfg = await r.json();
+    document.getElementById("tg-enabled").checked = !!cfg.enabled;
+    document.getElementById("tg-chatid").value = cfg.chatId || "";
+    // Show the token as a mask, keep it if the user doesn't change it
+    tgCurrentToken = cfg.botTokenMasked || "";
+    document.getElementById("tg-token").value = tgCurrentToken;
+  } catch (e) {
+    setTgMsg("Load failed: " + e.message, "err");
+  }
+}
+
+function openTg() {
+  document.getElementById("tg-mask").classList.add("open");
+  setTgMsg("");
+  loadTgConfig();
+}
+function closeTg() {
+  document.getElementById("tg-mask").classList.remove("open");
+}
+
+async function saveTg() {
+  const btn = document.getElementById("tg-save");
+  btn.disabled = true;
+  setTgMsg("Saving…");
+  try {
+    const tokenInput = document.getElementById("tg-token").value.trim();
+    // If the token wasn't changed (still the mask), don't send it, let the backend keep it
+    const body = {
+      enabled: document.getElementById("tg-enabled").checked,
+      chatId: document.getElementById("tg-chatid").value.trim(),
+    };
+    if (tokenInput && tokenInput !== tgCurrentToken) body.botToken = tokenInput;
+    const r = await fetch("/api/tg/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || data.error || "Unknown error");
+    tgCurrentToken = data.botTokenMasked || "";
+    document.getElementById("tg-token").value = tgCurrentToken;
+    setTgMsg("✓ Saved", "ok");
+  } catch (e) {
+    setTgMsg("Save failed: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function autoTg() {
+  setTgMsg("Fetching… (make sure you've already sent the bot a message in TG)");
+  try {
+    const tokenInput = document.getElementById("tg-token").value.trim();
+    const body = {};
+    if (tokenInput && tokenInput !== tgCurrentToken) body.botToken = tokenInput;
+    const r = await fetch("/api/tg/auto-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || "Unknown error");
+    document.getElementById("tg-chatid").value = data.chatId;
+    setTgMsg("✓ Fetched chat_id=" + data.chatId, "ok");
+  } catch (e) {
+    setTgMsg("Fetch failed: " + e.message, "err");
+  }
+}
+
+async function testTg() {
+  setTgMsg("Sending test…");
+  try {
+    const r = await fetch("/api/tg/test", { method: "POST" });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || "Unknown error");
+    setTgMsg("✓ Test message sent", "ok");
+  } catch (e) {
+    setTgMsg("Failed: " + e.message, "err");
+  }
+}
+
+document.getElementById("tg-toggle").addEventListener("click", openTg);
+document.getElementById("tg-close").addEventListener("click", closeTg);
+document.getElementById("tg-save").addEventListener("click", saveTg);
+document.getElementById("tg-auto").addEventListener("click", autoTg);
+document.getElementById("tg-test").addEventListener("click", testTg);
+document.getElementById("tg-mask").addEventListener("click", e => {
+  if (e.target.id === "tg-mask") closeTg();
+});
+
+// ── Balance history curve ──
+function setBalanceMsg(text, kind) {
+  const el = document.getElementById("balance-msg");
+  el.textContent = text || "";
+  el.className = "manage-msg" + (kind ? " " + kind : "");
+  if (kind === "ok") setTimeout(() => {
+    if (el.classList.contains("ok")) { el.textContent = ""; el.className = "manage-msg"; }
+  }, 3000);
+}
+
+function fmtUsd(v) {
+  if (v == null || !Number.isFinite(v)) return "—";
+  const sign = v >= 0 ? "" : "-";
+  return `${sign}$${Math.abs(v).toFixed(2)}`;
+}
+function fmtPnlSigned(v) {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
+}
+
+function drawBalanceChart(items) {
+  const svg = document.getElementById("balance-chart");
+  const empty = document.getElementById("balance-empty");
+  svg.innerHTML = "";
+
+  if (items.length === 0) {
+    empty.style.display = "block";
+    svg.style.display = "none";
+    return;
+  }
+  empty.style.display = "none";
+  svg.style.display = "";
+
+  // Viewport size (responsive: use svg.clientWidth)
+  const W = svg.clientWidth || 700;
+  const H = 320;
+  const PAD_L = 56, PAD_R = 16, PAD_T = 14, PAD_B = 32;
+  const cw = W - PAD_L - PAD_R;
+  const ch = H - PAD_T - PAD_B;
+
+  const totals = items.map(d => d.total);
+  let minV = Math.min(...totals);
+  let maxV = Math.max(...totals);
+  const range = Math.max(1, maxV - minV);
+  // Leave 10% padding top and bottom
+  minV -= range * 0.1;
+  maxV += range * 0.1;
+
+  const x = i => PAD_L + (items.length === 1 ? cw / 2 : cw * i / (items.length - 1));
+  const y = v => PAD_T + ch * (1 - (v - minV) / (maxV - minV));
+
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, text) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // Y-axis grid + ticks
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const v = minV + (maxV - minV) * i / yTicks;
+    const yp = y(v);
+    svg.appendChild(el("line", { x1: PAD_L, y1: yp, x2: W - PAD_R, y2: yp,
+      stroke: "rgba(148,163,184,0.1)", "stroke-dasharray": "2,3" }));
+    svg.appendChild(el("text", { x: PAD_L - 6, y: yp + 3.5, "text-anchor": "end",
+      "font-size": 10, fill: "#6a737d" }, "$" + Math.round(v)));
+  }
+
+  // X-axis labels (at most 6, to avoid crowding)
+  const xLabelStep = Math.max(1, Math.ceil(items.length / 6));
+  for (let i = 0; i < items.length; i += xLabelStep) {
+    const xp = x(i);
+    svg.appendChild(el("text", { x: xp, y: H - 8, "text-anchor": "middle",
+      "font-size": 10, fill: "#6a737d" }, items[i].date.slice(5)));  // MM-DD
+  }
+  // Always show the last one
+  if ((items.length - 1) % xLabelStep !== 0) {
+    const xp = x(items.length - 1);
+    svg.appendChild(el("text", { x: xp, y: H - 8, "text-anchor": "middle",
+      "font-size": 10, fill: "#6a737d" }, items[items.length - 1].date.slice(5)));
+  }
+
+  // Line: draw dashed between adjacent dates more than 1 day apart (hints at missing-data days)
+  const pts = items.map((d, i) => ({ ...d, _x: x(i), _y: y(d.total) }));
+  let pathStr = "";
+  for (let i = 0; i < pts.length; i++) {
+    pathStr += (i === 0 ? "M" : " L") + pts[i]._x + "," + pts[i]._y;
+  }
+  // Light fill area
+  const areaStr = pathStr + ` L${pts[pts.length - 1]._x},${PAD_T + ch} L${pts[0]._x},${PAD_T + ch} Z`;
+  svg.appendChild(el("path", { d: areaStr, fill: "rgba(244,183,64,0.08)", stroke: "none" }));
+  svg.appendChild(el("path", { d: pathStr, fill: "none", stroke: "#f0a500", "stroke-width": 2 }));
+
+  // Data points + tooltip
+  const tooltip = el("g", { id: "bh-tooltip", style: "display:none;pointer-events:none" });
+  const tipBg = el("rect", { fill: "#1c2128", stroke: "#30363d", rx: 4, width: 130, height: 50 });
+  const tipText1 = el("text", { x: 8, y: 16, "font-size": 11, fill: "#e6edf3" });
+  const tipText2 = el("text", { x: 8, y: 32, "font-size": 11, fill: "#f0a500" });
+  const tipText3 = el("text", { x: 8, y: 46, "font-size": 10, fill: "#8b96a8" });
+  tooltip.appendChild(tipBg);
+  tooltip.appendChild(tipText1);
+  tooltip.appendChild(tipText2);
+  tooltip.appendChild(tipText3);
+
+  for (const p of pts) {
+    const c = el("circle", { cx: p._x, cy: p._y, r: 3, fill: "#f0a500", stroke: "#1c2128", "stroke-width": 1 });
+    // Hover area (a larger transparent circle for easier clicking)
+    const hover = el("circle", { cx: p._x, cy: p._y, r: 8, fill: "transparent", style: "cursor:crosshair" });
+    hover.addEventListener("mouseenter", () => {
+      tipText1.textContent = p.date;
+      tipText2.textContent = "$" + p.total.toFixed(2);
+      tipText3.textContent = `Online ${p.online} / Offline ${p.offline}`;
+      // Position (avoid overflowing the right edge)
+      let tx = p._x + 10;
+      if (tx + 130 > W) tx = p._x - 140;
+      let ty = p._y - 25;
+      if (ty < PAD_T) ty = p._y + 10;
+      tooltip.setAttribute("transform", `translate(${tx},${ty})`);
+      tooltip.style.display = "";
+    });
+    hover.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+    svg.appendChild(c);
+    svg.appendChild(hover);
+  }
+  svg.appendChild(tooltip);
+}
+
+let _bhPendingDelDate = null;  // Date awaiting second confirmation
+function renderBalanceTable(items) {
+  const tbody = document.getElementById("balance-table-body");
+  tbody.innerHTML = "";
+  const rev = [...items].reverse();
+  for (let i = 0; i < rev.length; i++) {
+    const row = rev[i];
+    const prev = rev[i + 1];
+    const change = prev ? row.total - prev.total : null;
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid rgba(148,163,184,0.05)";
+    const changeCell = change == null ? "—" :
+      `<span style="color:${change >= 0 ? '#3fb950' : '#f85149'}">${fmtPnlSigned(change)}</span>`;
+    const pending = _bhPendingDelDate === row.date;
+    tr.innerHTML = `
+      <td style="padding:4px 8px;color:#c9d1d9">${row.date}</td>
+      <td style="padding:4px 8px;text-align:right;color:#f0a500;font-weight:600">${fmtUsd(row.total)}</td>
+      <td style="padding:4px 8px;text-align:right">${changeCell}</td>
+      <td style="padding:4px 8px;text-align:right;color:#8b96a8">${row.online} / ${row.offline}</td>
+      <td style="padding:4px 8px;text-align:right">
+        <button class="icon-btn ${pending ? "danger confirm" : "danger"}" data-act="bh-del" data-date="${row.date}">
+          ${pending ? "Confirm?" : "Delete"}
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  }
+  tbody.querySelectorAll('button[data-act="bh-del"]').forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const date = btn.dataset.date;
+      if (_bhPendingDelDate !== date) {
+        _bhPendingDelDate = date;
+        renderBalanceTable(items);
+        setTimeout(() => {
+          if (_bhPendingDelDate === date) { _bhPendingDelDate = null; renderBalanceTable(items); }
+        }, 4000);
+        return;
+      }
+      // Second time: perform the deletion
+      _bhPendingDelDate = null;
+      try {
+        const r = await fetch(`/api/balance-history?date=${encodeURIComponent(date)}`, { method: "DELETE" });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        await loadBalanceHistory();
+      } catch (e) {
+        setBalanceMsg("Delete failed: " + (e.message || e), "err");
+      }
+    });
+  });
+}
+
+function renderBalanceSummary(items) {
+  const $days = document.getElementById("bh-days");
+  const $latest = document.getElementById("bh-latest");
+  const $change = document.getElementById("bh-change");
+  const $max = document.getElementById("bh-max");
+  const $min = document.getElementById("bh-min");
+
+  $days.textContent = items.length;
+  if (items.length === 0) {
+    $latest.textContent = $change.textContent = $max.textContent = $min.textContent = "—";
+    return;
+  }
+  const totals = items.map(d => d.total);
+  const latest = items[items.length - 1];
+  const first = items[0];
+  $latest.textContent = fmtUsd(latest.total);
+  const change = latest.total - first.total;
+  $change.textContent = fmtPnlSigned(change);
+  $change.style.color = change >= 0 ? "#3fb950" : "#f85149";
+  $max.textContent = fmtUsd(Math.max(...totals));
+  $min.textContent = fmtUsd(Math.min(...totals));
+}
+
+async function loadBalanceHistory() {
+  setBalanceMsg("Loading…");
+  try {
+    const r = await fetch("/api/balance-history");
+    const items = await r.json();
+    if (!Array.isArray(items)) throw new Error("Malformed response");
+    renderBalanceSummary(items);
+    drawBalanceChart(items);
+    renderBalanceTable(items);
+    setBalanceMsg("");
+  } catch (e) {
+    setBalanceMsg("Load failed: " + e.message, "err");
+  }
+}
+
+function openBalance() {
+  document.getElementById("balance-mask").classList.add("open");
+  loadBalanceHistory();
+}
+function closeBalance() {
+  document.getElementById("balance-mask").classList.remove("open");
+}
+
+async function snapshotNow() {
+  const btn = document.getElementById("balance-snapshot-now");
+  btn.disabled = true;
+  setBalanceMsg("Taking snapshot (about 5-30 seconds)…");
+  try {
+    const r = await fetch("/api/balance-history/now", { method: "POST" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    // Reload after 5 seconds
+    setTimeout(() => { loadBalanceHistory(); btn.disabled = false; }, 5000);
+    setBalanceMsg("✓ Triggered, waiting for data…", "ok");
+  } catch (e) {
+    setBalanceMsg("Failed: " + e.message, "err");
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("balance-toggle").addEventListener("click", openBalance);
+document.getElementById("balance-close").addEventListener("click", closeBalance);
+document.getElementById("balance-mask").addEventListener("click", e => {
+  if (e.target.id === "balance-mask") closeBalance();
+});
+document.getElementById("balance-snapshot-now").addEventListener("click", snapshotNow);
+
+async function init() {
+  try {
+    const r = await fetch("/api/accounts");
+    accounts = await r.json();
+    if (!accounts.length) {
+      document.getElementById("loading").innerHTML = "⚠ No accounts yet. Click \"⚙ Manage\" in the top-right to add (or press M)";
+      // Start a poll even with no accounts, so it takes over automatically once accounts are added in the management panel
+      refreshTimer = setTimeout(refresh, REFRESH_MS);
+    } else {
+      await refresh();
+    }
+    startCountdown();
+  } catch (e) {
+    document.getElementById("loading").innerHTML = "❌ Load failed: " + e.message;
+  }
+}
+
+init();
+</script>
+
+</body>
+</html>

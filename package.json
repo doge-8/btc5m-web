@@ -1,0 +1,25 @@
+{
+  "name": "btc5m-web",
+  "version": "5.0.0",
+  "description": "BTC 5-minute up/down order book monitor - standalone deployment edition",
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx ./server.ts",
+    "collect": "npx tsx ./data-collector.ts"
+  },
+  "dependencies": {
+    "@polymarket/clob-client-v2": "^1.0.3",
+    "dotenv": "^16.0.0",
+    "ethers": "^6.0.0",
+    "express": "^5.2.1",
+    "undici": "^6.25.0",
+    "ws": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
